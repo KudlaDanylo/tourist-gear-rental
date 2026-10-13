@@ -1,5 +1,5 @@
 import bcrypt
-from table import Client
+from client import Client
 
 
 class SessionManager:
@@ -47,7 +47,7 @@ class AuthService:
             number=number,
             email=email,
             password_hash=hash_password,
-            is_admin=is_user_admin
+            admin=is_user_admin
         )
         self.db_session.add(new_client)
         self.db_session.commit()
@@ -58,6 +58,34 @@ class AuthService:
         if not client or not self._verify_password(client.password_hash, password):
             raise ValueError("Невірна пошта або пароль")
         self.session_manager.set_current_user(client)
+        return True
+
+    def delete_user(self, user_id: int):
+        user = self.db_session.query(Client).filter_by(id=user_id).first()
+        if user:
+            self.db_session.delete(user)
+            self.db_session.commit()
+            return True
+        return False
+
+    def update_user_data(self, user_id: int, new_name: str, new_email: str, new_password: str):
+        user = self.db_session.query(Client).filter_by(id=user_id).first()
+        if not user:
+            return False
+        if new_name:
+            user.name = new_name
+
+        if new_email and new_email != user.email:
+            existing_user = self.db_session.query(Client).filter_by(email=new_email).first()
+            if existing_user:
+                raise ValueError("Ця електронна пошта вже зайнята іншим користувачем.")
+            user.email = new_email
+
+        if new_password:
+            salt = bcrypt.gensalt()
+            hashed = bcrypt.hashpw(new_password.encode('utf-8'), salt)
+            user.password_hash = hashed
+        self.db_session.commit()
         return True
 
     def logout(self):
