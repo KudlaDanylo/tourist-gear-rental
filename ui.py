@@ -1,12 +1,14 @@
 from validation import Validation
 from auth_service import AuthService, SessionManager
 from equipment_service import EquipmentService
+from rental_service import RentalService
 
 class ConsoleUI:
-    def __init__(self, auth_service: AuthService, session_manager: SessionManager, equipment_service: EquipmentService):
+    def __init__(self, auth_service: AuthService, session_manager: SessionManager, equipment_service: EquipmentService, rental_service: RentalService):
         self.auth_service = auth_service
         self.session_manager = session_manager
         self.equipment_service = equipment_service
+        self.rental_service = rental_service
 
     def run(self):
         is_running = True
@@ -37,34 +39,44 @@ class ConsoleUI:
 
     def _show_user_menu(self):
         current_user = self.session_manager.current_user
-        print(f"Активний користувач: {current_user.name}")
+        print(f"---Активний користувач: {current_user.name}---")
         if current_user.admin:
             print("--- ПАНЕЛЬ АДМІНІСТРАТОРА ---")
-            print("4. Додати нове спорядження")
-            print("5. Змінити дані спорядження")
-            print("6. Видалити спорядження")
+            print("01. Додати нове спорядження")
+            print("02. Змінити дані спорядження")
+            print("03. Видалити спорядження")
 
         print("1. Доступне спорядження")
         print("2. Редагувати свій профіль")
         print("3. Вийти з акаунту")
-        print("7. Видалити свій профіль (назавжди)")
+        print("4. Видалити свій профіль назавжди")
+        print("5. Орендування спорядження")
+        print("6. Мої оренди")
+        print("7. Повернути спорядження")
 
         choice = input("Оберіть дію: ")
         if choice == "1":
             self._show_all_equipment()
-        if choice == "2":
+        elif choice == "2":
             self._handle_edit_profile()
-        if choice == "3":
+        elif choice == "3":
             self.auth_service.logout()
             print("Ви вийшли з системи")
-        elif choice == "4" and current_user.admin:
-            self._handle_add_equipment()
-        elif choice == "5" and current_user.admin:
-            self._handle_update_equipment()
-        elif choice == "6" and current_user.admin:
-            self._handle_delete_equipment()
-        elif choice == "7":
+        elif choice == "4":
             self._handle_delete_account()
+        elif choice == "5":
+            self._handle_rent_equipment()
+        elif choice == "6":
+            self._slow_my_rentals()
+        elif choice == "7":
+            self._handle_return_equipment()
+
+        elif choice == "01" and current_user.admin:
+            self._handle_add_equipment()
+        elif choice == "02" and current_user.admin:
+            self._handle_update_equipment()
+        elif choice == "03" and current_user.admin:
+            self._handle_delete_equipment()
         else:
             print("невідома команда")
         return True
@@ -93,14 +105,11 @@ class ConsoleUI:
         email = input("Email: ")
         password = input("Пароль: ")
 
-        try:
-            self.auth_service.login(email, password)
-            print(f"Вітаємо, {self.session_manager.current_user.name}!")
-        except ValueError as e:
-            print(f"Помилка: {e}")
+        self.auth_service.login(email, password)
+        print(f"Вітаємо, {self.session_manager.current_user.name}!")
 
     def _handle_add_equipment(self):
-        print("Додавання нового спорядження")
+        print("---Додавання нового спорядження---")
         name = input("Назва товару: ")
         category = input("Категорія: ")
         price = int(input("Ціна за годину: "))
@@ -113,7 +122,7 @@ class ConsoleUI:
         if not items:
             print("Склад порожній")
             return
-        print("ДОСТУПНЕ СПОРЯДЖЕННЯ")
+        print("---ДОСТУПНЕ СПОРЯДЖЕННЯ---")
         for item in items:
             print(f"[ID: {item.id}] {item.name} ({item.category}) | Ціна: {item.price} грн | Залишок: {item.quantity} шт.")
         input("Натисніть Enter, щоб повернутися до меню...")
@@ -140,10 +149,39 @@ class ConsoleUI:
         else:
             print("Помилка: Товар з таким ID не знайдено.")
 
+    def _handle_rent_equipment(self):
+        if not self._show_all_equipment():
+            return
+
+        item_id = int(input("Введіть ID спорядження, яке хочете орендувати: "))
+        current_user = self.session_manager.current_user
+        self.rental_service.rent_equipment(client_id=current_user.id, equipment_id=item_id)
+
+    def _slow_my_rentals(self):
+        current_user = self.session_manager.current_user
+        rentals = self.rental_service.get_user_rentals(current_user.id)
+        print("Моє орендоване спорядження")
+        if rentals:
+            for rental, item in rentals:
+                time_str = rental.rent_time.strftime("%Y-%m-%d %H:%M")
+                print(f"[Номер чеку: {rental.id}] {item.name} | Категорія: {item.category}| Орендовано: {time_str}")
+        else:
+            print("Ще нічого не орендовано")
+
+    def _handle_return_equipment(self):
+        rental_id = int(input("Введіть Номер чеку для повернення (або 0 для відміни): "))
+        if rental_id == 0:
+            return
+        current_user = self.session_manager.current_user
+        if self.rental_service.return_equipment(current_user.id, rental_id):
+            print("Спорядження повернуто на склад")
+        else:
+            print("Чеку не знайдено")
+
     def _handle_edit_profile(self):
         current_user = self.session_manager.current_user
 
-        print("РЕДАГУВАННЯ ПРОФІЛЮ")
+        print("---РЕДАГУВАННЯ ПРОФІЛЮ---")
         new_name = input(f"Нове ім'я ({current_user.name}): ").strip()
         new_email = input(f"Нова пошта ({current_user.email}): ").strip()
         new_password = input("Новий пароль: ").strip()
