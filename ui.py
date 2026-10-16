@@ -1,8 +1,8 @@
+from date_helper import DateHelper
 from validation import Validation
 from auth_service import AuthService, SessionManager
 from equipment_service import EquipmentService
 from rental_service import RentalService
-from datetime import datetime
 
 class ConsoleUI:
     def __init__(self, auth_service: AuthService, session_manager: SessionManager, equipment_service: EquipmentService, rental_service: RentalService):
@@ -155,16 +155,17 @@ class ConsoleUI:
             return
 
         item_id = int(input("Введіть ID спорядження, яке хочете орендувати: "))
-        print("Введіть час оренди у форматі РРРР.ММ.ДД ГГ:ХХ (наприклад: 2000.01.01 00:00)")
-        start_str = input("З якого часу: ").strip()
-        end_str = input("До якого часу: ").strip()
-        start_time = datetime.strptime(start_str, "%Y.%m.%d %H:%M")
-        end_time = datetime.strptime(end_str, "%Y.%m.%d %H:%M")
-        if start_time >= end_time:
-            print("Помилка: Час завершення має бути пізнішим за час початку!")
+        print("Введіть дати оренди у форматі РРРР.ММ.ДД (наприклад: 2000.01.01)")
+        start_str = input("З якого числа: ").strip()
+        end_str = input("До якого числа: ").strip()
+
+        dates, error = DateHelper.parse_rental_dates(start_str, end_str)
+        if error:
+            print(error)
             return
+        start_date, end_date = dates
         current_user = self.session_manager.current_user
-        self.rental_service.rent_equipment(client_id=current_user.id, equipment_id=item_id, start_time=start_time, end_time=end_time)
+        self.rental_service.rent_equipment(client_id=current_user.id, equipment_id=item_id, start_time=start_date, end_time=end_date)
 
     def _slow_my_rentals(self):
         current_user = self.session_manager.current_user
@@ -172,8 +173,8 @@ class ConsoleUI:
         print("Моє орендоване спорядження")
         if rentals:
             for rental, item in rentals:
-                start_str = rental.start_time.strftime("%Y.%m.%d %H:%M")
-                end_str = rental.end_time.strftime("%Y.%m.%d %H:%M")
+                start_str = rental.start_time.strftime("%Y.%m.%d")
+                end_str = rental.end_time.strftime("%Y.%m.%d")
                 print(f"[Номер чеку: {rental.id}] {item.name} | Категорія: {item.category}")
                 print(f"Термін: {start_str} - {end_str}")
         else:

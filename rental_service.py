@@ -43,8 +43,6 @@ class RentalService:
 
     def return_equipment(self, client_id, rental_id):
         rental = self.db_session.query(Rental).filter_by(id=rental_id, client_id=client_id).first()
-        item = self.db_session.query(Equipment).filter_by(id=rental.equipment_id).first()
-
 
         self.db_session.delete(rental)
         self.db_session.commit()

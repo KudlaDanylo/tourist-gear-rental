@@ -30,7 +30,7 @@ class AuthService:
     def _verify_password(self, hashed_password: str, provided_password: str):
         return bcrypt.checkpw(provided_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
-    def register(self, name: str , age: str , number: str, email: str , password: str):
+    def register(self, name: str, age: str, number: str, email: str, password: str):
         audit_email = self.db_session.query(Client).filter_by(email=email).first()
         if audit_email:
             raise ValueError("Користувач з такою електронною поштою вже існує")
