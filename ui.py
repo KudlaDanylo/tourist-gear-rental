@@ -1,4 +1,5 @@
 from date_helper import DateHelper
+from equipment import Equipment
 from validation import Validation
 from auth_service import AuthService, SessionManager
 from equipment_service import EquipmentService
@@ -47,17 +48,17 @@ class ConsoleUI:
             print("02. Змінити дані спорядження")
             print("03. Видалити спорядження")
 
-        print("1. Доступне спорядження")
+        print("1. Доступне спорядження для оренди")
         print("2. Редагувати свій профіль")
         print("3. Вийти з акаунту")
         print("4. Видалити свій профіль назавжди")
-        print("5. Орендування спорядження")
-        print("6. Мої оренди")
-        print("7. Повернути спорядження")
+        print("5. Мої оренди")
+        print("6. Повернути спорядження")
+        print("7. Графік доступності товару")
 
         choice = input("Оберіть дію: ")
         if choice == "1":
-            self._show_all_equipment()
+            self._handle_rent_equipment()
         elif choice == "2":
             self._handle_edit_profile()
         elif choice == "3":
@@ -66,11 +67,11 @@ class ConsoleUI:
         elif choice == "4":
             self._handle_delete_account()
         elif choice == "5":
-            self._handle_rent_equipment()
-        elif choice == "6":
             self._slow_my_rentals()
-        elif choice == "7":
+        elif choice == "6":
             self._handle_return_equipment()
+        elif choice == "7":
+            self._handle_check_schedule()
 
         elif choice == "01" and current_user.admin:
             self._handle_add_equipment()
@@ -126,14 +127,13 @@ class ConsoleUI:
         print("---ДОСТУПНЕ СПОРЯДЖЕННЯ---")
         for item in items:
             print(f"[ID: {item.id}] {item.name} ({item.category}) | Ціна: {item.price} грн | Всього на складі: {item.quantity} шт.")
-        input("Натисніть Enter, щоб повернутися до меню...")
         return True
 
     def _handle_delete_equipment(self):
         if not self._show_all_equipment():
             return
 
-        item_id = int(input("Введіть ID товару який хочете видалити: "))
+        item_id = int(input("Введіть ID товару який хочете віддати: "))
         if self.equipment_service.delete_equipment(item_id):
             print("Товар видалено")
         else:
@@ -154,18 +154,47 @@ class ConsoleUI:
         if not self._show_all_equipment():
             return
 
-        item_id = int(input("Введіть ID спорядження, яке хочете орендувати: "))
-        print("Введіть дати оренди у форматі РРРР.ММ.ДД (наприклад: 2000.01.01)")
-        start_str = input("З якого числа: ").strip()
-        end_str = input("До якого числа: ").strip()
+        if self.session_manager.get_rental_dates():
+            print("Використати попередні дати?")
+            choice = input("1 - Так, 2 - Ввести нові, 0 - Вихід").strip()
+            if choice == "0":
+                return
+            if choice == "2":
+                self.session_manager.clear_dates()
 
-        dates, error = DateHelper.parse_rental_dates(start_str, end_str)
-        if error:
-            print(error)
-            return
-        start_date, end_date = dates
-        current_user = self.session_manager.current_user
-        self.rental_service.rent_equipment(client_id=current_user.id, equipment_id=item_id, start_time=start_date, end_time=end_date)
+        if not self.session_manager.get_rental_dates():
+            start_str = input("З якого числа: ").strip()
+            end_str = input("До якого числа: ").strip()
+
+            error = self.session_manager.set_rental_dates(start_str, end_str)
+            if error:
+                print(error)
+                return
+
+        start_date, end_date = self.session_manager.get_rental_dates()
+
+        page = 0
+        while True:
+            items, has_more = self.rental_service.get_available_equipment_page(start_date, end_date, page)
+            if not items and page == 0:
+                print("На ці дати немає вільного спорядження")
+                return
+            print("Вільне спорядження")
+            for item in items:
+                print(f"[ID: {item.id}] {item.name} | {item.price} грн")
+            if has_more:
+                print("Натисніть Enter, щоб побачити наступні товари")
+            ans = input("Введіть ID для оренди (або 0 для скасування): ").strip()
+            if ans == "0":
+                return
+            elif ans == "" and has_more:
+                page += 1
+                continue
+            elif ans.isdigit():
+                current_user = self.session_manager.current_user
+                self.rental_service.rent_equipment(current_user.id, int(ans), start_date, end_date)
+                input("Натисніть Enter для продовження...")
+                return
 
     def _slow_my_rentals(self):
         current_user = self.session_manager.current_user
@@ -219,3 +248,29 @@ class ConsoleUI:
                 print("Акаунт не знайдено")
         else:
             print("Видалення скасовано.")
+
+    def _handle_check_schedule(self):
+        if not self._show_all_equipment():
+            return
+
+        item_id = int(input("\nВведіть ID спорядження для перегляду графіка: "))
+
+
+        item = self.rental_service.db_session.query(Equipment).filter_by(id=item_id).first()
+        if not item:
+            print("Такого спорядження не існує.")
+            return
+
+        bookings = self.rental_service.get_item_schedule(item_id)
+
+        print(f"\nГРАФІК БРОНЮВАНЬ: {item.name}")
+        print(f"Загальна кількість на складі: {item.quantity} шт.\n")
+
+        if not bookings:
+            print("Цей товар абсолютно вільний на будь-які дати!")
+        else:
+            print("Поточні бронювання інших туристів:")
+            for b in bookings:
+                start_str = b.start_time.strftime("%Y.%m.%d")
+                end_str = b.end_time.strftime("%Y.%m.%d")
+                print(f" Заброньовано: з {start_str} по {end_str}")
