@@ -1,20 +1,6 @@
 import bcrypt
 from client import Client
-
-
-class SessionManager:
-    def __init__(self):
-        self.current_user = None
-
-    def set_current_user(self, user):
-        self.current_user = user
-
-    def clear_session(self):
-        self.current_user = None
-
-    def is_authenticated(self):
-        return self.current_user is not None
-
+from session_manager import SessionManager
 
 class AuthService:
     def __init__(self, db_session, session_manager: SessionManager):
